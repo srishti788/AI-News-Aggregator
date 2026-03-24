@@ -9,7 +9,7 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     
-  - type: background_worker
+  - type: worker
     name: ai-news-worker
     env: python
     plan: free
