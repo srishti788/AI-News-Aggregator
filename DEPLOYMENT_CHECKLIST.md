@@ -11,17 +11,20 @@
 - [ ] Database connection supports both SQLite and PostgreSQL
 
 ### Files Created for Deployment
-- [ ] `Procfile` created (defines how to run services)
-- [ ] `render.yaml` created (defines all services and databases)
-- [ ] `.gitignore` updated (excludes `.env` and other sensitive files)
-- [ ] `RENDER_DEPLOYMENT.md` documentation created
+- [x] `render.yaml` created (defines all services and databases)
+- [x] `app/web_server.py` created (Flask web service)
+- [x] `app/worker.py` created (background worker with retries)
+- [x] `.gitignore` updated (excludes `.env` and other sensitive files)
+- [x] `RENDER_DEPLOYMENT.md` documentation created
 
 ### Code Verified
-- [ ] `app/database/connection.py` handles `DATABASE_URL` (for Render)
-- [ ] `python main.py` runs without errors locally
-- [ ] Works with `USE_SQLITE=true` (local dev) and `USE_SQLITE=false` (production)
+- [x] `app/database/connection.py` handles `DATABASE_URL` (for Render)
+- [x] `app/daily_runner.py` runs the full pipeline
+- [x] Works with `USE_SQLITE=true` (local dev) and PostgreSQL (production)
 - [ ] All imports work correctly
 - [ ] Database models defined properly
+- [ ] Web server starts on PORT environment variable
+- [ ] Worker properly waits for database and initializes tables
 
 ---
 
@@ -43,6 +46,7 @@
   ```
 - [ ] All files pushed to GitHub
 - [ ] Can view repository on github.com
+- [ ] `.gitignore` properly excludes `.env` and `__pycache__`
 
 ---
 
@@ -53,7 +57,7 @@
 - [ ] Logged in with GitHub
 - [ ] GitHub repository connected to Render
 
-### Service Creation
+### Service Creation  
 - [ ] Clicked "New +" → "Blueprint"
 - [ ] Selected your GitHub repository
 - [ ] Render detected `render.yaml` automatically
@@ -66,37 +70,120 @@
 In Render Dashboard, set these for **all services**:
 
 **Essential:**
-- [ ] `OPENAI_API_KEY` = `sk-...your-key...`
+- [ ] `OPENAI_API_KEY` = `sk-...your-key...` (from https://platform.openai.com/api-keys)
 
 **Optional (for email sending):**
 - [ ] `MY_EMAIL` = your email address
 - [ ] `APP_PASSWORD` = Gmail app-specific password
 
-**Database (automatically set by Render):**
-- [ ] `DATABASE_URL` - Provided automatically
+**Database (automatically set by Render - DO NOT set manually):**
+- [ ] `DATABASE_URL` - Provided automatically by Render
 - [ ] `POSTGRES_HOST` - Provided automatically
 - [ ] `POSTGRES_PASSWORD` - Provided automatically
-- [ ] `POSTGRES_DB` = `ai_news_aggregator`
-- [ ] `USE_SQLITE` = `false`
+- [ ] `POSTGRES_USER` - Provided automatically (usually "postgres_user")
+- [ ] `POSTGRES_DB` - Provided automatically (should be "ai_news_aggregator")
+- [ ] `POSTGRES_PORT` - Provided automatically (usually 5432)
+
+**How to Check What Variables Render Set:**
+1. Go to each service in Render dashboard
+2. Click "Settings"
+3. Scroll to "Environment" section
+4. You'll see all variables that have been set
 
 ---
 
-## ✨ Post-Deployment
+## ✨ Post-Deployment Verification
 
-### Verify Deployment
-- [ ] All services showing "Live" status in Render dashboard
-- [ ] PostgreSQL database is running
-- [ ] Background worker is running
-- [ ] Can view logs without errors
+### Check Service Status
+- [ ] Go to https://dashboard.render.com
+- [ ] All three services show status:
+  - [ ] ai-news-aggregator (Web) - "Live"
+  - [ ] ai-news-worker (Background Worker) - "Live"
+  - [ ] ai-news-db (PostgreSQL) - "Available"
 
-### Monitor Logs
-- [ ] Go to ai-news-worker service → "Logs"
-- [ ] Look for successful pipeline runs:
+### Test Web Service
+- [ ] Click the web service URL link
+- [ ] You should see JSON response: `{"status": "running", ...}`
+- [ ] Visit `/status` endpoint to see more info
+- [ ] Visit `/health` endpoint for quick health check
+
+### Monitor Worker Service
+- [ ] Click "ai-news-worker" service
+- [ ] Click "Logs" tab
+- [ ] Look for logs showing:
   ```
-  Starting Daily AI News Aggregator Pipeline
-  ✓ Scraped N articles
-  ✓ Created N digests
+  ✓ All required environment variables are set
+  ⏳ Waiting for database to be ready...
+  ✓ Database connection successful
+  📊 Initializing database tables...
+  ✓ Database tables initialized successfully
+  🔄 Pipeline Run #1
+  ...starting Daily AI News Aggregator Pipeline...
+  ✓ Scraped X YouTube videos
+  ✓ Processed Y articles
+  ✓ Created Z digests
+  ✓ Email sent successfully
   ```
+
+### Verify Pipeline Execution
+- [ ] Worker logs show "Pipeline Run #1" completed
+- [ ] Logs show articles scraped and processed
+- [ ] Next pipeline run scheduled correctly
+- [ ] No errors in logs (warnings are okay)
+
+### Database Status
+- [ ] ai-news-db service shows "Available"
+- [ ] Web service logs show successful table creation
+- [ ] Worker can connect to database (no connection errors)
+
+---
+
+## 🔍 Troubleshooting During Deployment
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "Build failed" | Missing dependency or syntax error | Check logs, fix issue, push to GitHub |
+| "ModuleNotFoundError" | Package not in requirements.txt | Add to requirements.txt, commit, push |
+| "OPENAI_API_KEY not found" | Environment variable not set | Add to Render environment, wait for restart |
+| "Database connection refused" | Database not ready yet | Wait 2-3 minutes for all services to start |
+| Worker keeps restarting | Python error in code | Check logs for stacktrace, fix, commit, push |
+| Services not starting | Syntax errors or missing files | Check that all .py files have correct syntax |
+
+---
+
+## 📋 Pre-Deployment Validation (Run Locally)
+
+Before deploying, verify everything works locally:
+
+```bash
+# Test 1: Check Python syntax
+python check_syntax.py
+
+# Test 2: Test database connection  
+python -c "from app.database.connection import engine; print('✓ Database connection works')"
+
+# Test 3: Create tables
+python app/database/create_tables.py
+
+# Test 4: Test web server (local)
+python app/web_server.py
+
+# Test 5: Test pipeline (in another terminal)
+python app/worker.py  # (Press Ctrl+C to stop)
+```
+
+---
+
+## ✅ Final Verification Checklist
+
+- [ ] All services showing "Live"/"Available" in Render dashboard
+- [ ] Web service responds to health checks
+- [ ] Worker starting up without errors
+- [ ] Database tables created successfully
+- [ ] Pipeline running at least once (check logs)
+- [ ] No Python errors in any logs
+- [ ] Environment variables set correctly
+- [ ] Ready for continuous operation
 
 ### Test Functionality
 - [ ] Worker logs show pipeline running

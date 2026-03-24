@@ -3,8 +3,19 @@ services:
     name: ai-news-aggregator
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python app/database/create_tables.py
-    startCommand: python main.py
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -c "from app.database.models import Base; from app.database.connection import engine; Base.metadata.create_all(engine); print('✓ Database initialized')" && python app/web_server.py
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+  
+  - type: background_worker
+    name: ai-news-worker
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app/worker.py
     autoDeploy: true
   
 databases:

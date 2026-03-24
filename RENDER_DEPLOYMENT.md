@@ -1,6 +1,14 @@
 # Deploying AI News Aggregator to Render
 
-This guide walks you through deploying the AI News Aggregator to Render.
+This guide walks you through deploying the AI News Aggregator to Render with proper error handling and reliability.
+
+## Architecture
+
+The deployment uses three Render services:
+
+1. **Web Service** (`ai-news-aggregator`) - Flask app for health checks and status endpoints
+2. **Background Worker** (`ai-news-worker`) - Runs the daily pipeline continuously  
+3. **PostgreSQL Database** (`ai-news-db`) - Stores all data
 
 ## Prerequisites
 
@@ -38,66 +46,189 @@ git push -u origin main
 
 ## Step 3: Deploy Using render.yaml
 
-Render will automatically detect `render.yaml` and deploy:
+Render will automatically detect `render.yaml` and deploy three services:
 
-- **Web Service**: Initializes database
-- **Background Worker**: Runs the daily pipeline
-- **PostgreSQL Database**: Stores data (automatically created)
+- **Web Service** (ai-news-aggregator): Initializes database and provides health checks
+- **Background Worker** (ai-news-worker): Runs the daily pipeline continuously
+- **PostgreSQL Database**: Stores all news articles and digests
 
-### What Happens During Deployment:
+### How Deployment Works
 
 1. Render clones your repository
-2. Installs Python dependencies from `requirements.txt`
-3. Creates PostgreSQL database
-4. Runs database initialization
-5. Starts the background worker (runs `python main.py`)
+2. Creates PostgreSQL database (takes ~30 seconds)
+3. Web service installs Python dependencies
+4. Web service initializes database tables
+5. Background worker starts and begins pipeline execution every hour
+6. Both services stay running continuously
+
+### Important Notes
+
+- **Database Initialization**: The web service automatically creates all database tables on startup
+- **Database Readiness**: The worker waits up to 60 seconds for the database to be ready
+- **Pipeline Interval**: The background worker runs the full pipeline every 60 minutes
+- **Health Checks**: Visit the web service URL to see health check status
 
 ## Step 4: Configure Environment Variables in Render Dashboard
 
-After creating the services, configure these environment variables in Render:
+After services are created, add these environment variables in Render:
 
-### Web Service Variables:
-- `OPENAI_API_KEY` = Your OpenAI API key
-- `MY_EMAIL` = Your email address (optional)
-- `APP_PASSWORD` = Gmail app-specific password (optional)
+### Required for All Services:
 
-### Worker Service Variables:
-(Same as Web Service - will inherit from dashboard)
+- `OPENAI_API_KEY` = Your OpenAI API key (from https://platform.openai.com/api-keys)
 
-**To set variables:**
+### Optional (for email digest features):
 
-1. Go to your service in Render dashboard
-2. Click "Environment"
-3. Add each variable from above
-4. Render will automatically restart services
+- `MY_EMAIL` = Your email address  
+- `APP_PASSWORD` = Gmail app-specific password
 
-### Database Variables:
-These are **automatically provided** by Render:
-- `DATABASE_URL` - Full PostgreSQL connection string
+### Database Variables (automatically set by Render):
+
+Render automatically provides these - **do not set them manually**:
+- `DATABASE_URL` - PostgreSQL connection string
 - `POSTGRES_HOST` - Database host
 - `POSTGRES_PASSWORD` - Database password
-- etc.
+- `POSTGRES_USER` - Database user
+- `POSTGRES_DB` - Database name
+- `POSTGRES_PORT` - Database port
 
-(You don't need to set these - Render provides them)
+### To Set Variables in Render Dashboard:
 
-## Step 5: Enable Background Worker
+1. Go to each service in Render (web and worker)
+2. Click "Environment" 
+3. Add:
+   - `OPENAI_API_KEY` = your-api-key
+   - (Optional) `MY_EMAIL` and `APP_PASSWORD`
+4. Click "Save changes"
+5. Services will automatically restart with new variables
 
-The background worker runs `python main.py` continuously:
+## Step 5: Verify Deployment
 
-1. Go to your service in Render
-2. Set "Start Command" to: `python main.py`
-3. Keep the service running
+### Check Service Status
 
-This ensures:
-- Scrapes news articles from RSS feeds
-- Generates AI digests
-- Ranks articles by relevance
-- (Optionally) Sends email digests
+1. Go to https://dashboard.render.com
+2. You should see three services:
+   - ✓ ai-news-aggregator (Web) - Status: "Live"
+   - ✓ ai-news-worker (Background Worker) - Status: "Live"  
+   - ✓ ai-news-db (PostgreSQL) - Status: "Available"
 
-## Step 6: Monitor Your Deployment
+### Check if Services are Working
 
-**Check Status:**
-- Go to Render dashboard
+1. Click the web service link to open the health check URL
+2. You should see JSON response confirming the service is running
+3. Go to the `/status` endpoint to see more details
+
+### View Pipeline Logs
+
+1. Click on "ai-news-worker" service
+2. Click the "Logs" tab
+3. You should see pipeline execution logs:
+   ```
+   ✓ Database connection successful
+   ✓ Database tables initialized successfully
+   🔄 Pipeline Run #1 - 2024-03-24 14:30:00
+   ...starting Daily AI News Aggregator Pipeline...
+   ✓ Scraped 15 YouTube videos...
+   ✓ Processed 12 Anthropic articles...
+   ✓ Created 10 digests...
+   ✓ Pipeline run #1 completed successfully
+   Next run in 60 minutes...
+   ```
+
+## Troubleshooting Deployment Failures
+
+### Issue: Build Failure or "Database Connection Error"
+
+**Cause**: Database not ready when web service initializes tables
+
+**Fix**: This is automatically handled now with database connectivity checks
+
+**Check logs**: Go to web service → Logs tab
+
+### Issue: Worker Service Shows Error
+
+**Cause**: Usually missing `OPENAI_API_KEY` environment variable
+
+**Fix**:
+1. Check "Environment" tab for both services
+2. Verify `OPENAI_API_KEY` is set correctly
+3. Redeploy: Click "Manual Deploy" → "Deploy Latest Commit"
+
+**Check logs**: Go to worker service → Logs tab
+
+### Issue: Services Keep Restarting
+
+**Cause**: Often a Python import error or missing dependency
+
+**Fix**:
+1. Check the logs for the error message
+2. If it's an import error, add the package to `requirements.txt`
+3. Commit and push to GitHub
+4. Render will auto-redeploy
+
+### Issue: Database Shows "Available" but Worker Fails
+
+**Cause**: PostgreSQL is ready but credentials not set correctly
+
+**Fix**:
+1. Verify environment variables are set for BOTH services
+2. Check that `USE_SQLITE=false` is NOT set (it should use DATABASE_URL)
+3. Wait 1-2 minutes for all services to start
+4. Manually restart the worker service
+
+## Monitoring & Maintenance
+
+### Daily Monitoring
+
+- Check Render dashboard once daily
+- All three services should show "Live" or "Available"
+- Pipeline should run every hour automatically
+
+### View Recent Logs
+
+Worker service logs show:
+- When pipeline runs start and complete
+- How many articles were scraped and processed
+- Any errors or failed operations
+- Email digest status
+
+### Restart Services (if needed)
+
+If a service appears stuck:
+1. Go to that service in Render
+2. Click the "..." menu (top right)
+3. Select "Restart Service"
+
+## Common Issues & Solutions
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "ModuleNotFoundError" | Missing Python dependency | Add package to requirements.txt and redeploy |
+| "OPENAI_API_KEY not found" | Missing environment variable | Set in Render dashboard for both services |
+| "Connection refused" | Database not ready | Wait 2-3 minutes for all services to initialize |
+| Worker keeps restarting | Python error in code | Check logs for specific error, fix, and redeploy |
+| Pipeline doesn't run | Worker service stopped | Check logs, restart service, or redeploy |
+
+## Deployment Checklist
+
+```
+✓ Repository pushed to GitHub
+✓ render.yaml present in repository root
+✓ requirements.txt includes all dependencies
+✓ app/web_server.py exists (Flask web service)
+✓ app/worker.py exists (background worker)
+✓ app/daily_runner.py properly configured
+✓ All three services showing "Live" in Render
+✓ OPENAI_API_KEY environment variable set
+✓ Worker logs show successful pipeline runs
+✓ Web service health check returning 200 OK
+```
+
+## Getting Help
+
+- **Render Support**: https://render.com/docs
+- **Check Logs**: Always start by checking the detailed logs for each service
+- **Test Locally**: Run `python app/worker.py` locally to test pipeline logic
+- **Git Logs**: If deployment fails, check git commit history to see what changed
 - View service logs in real-time
 - Logs show if pipeline is running correctly
 
