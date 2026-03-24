@@ -13,10 +13,6 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
-    
-  - type: pserv
-    name: ai-news-db
-    plan: free
   
 databases:
   - name: ai-news-db
