@@ -5,8 +5,7 @@ services:
     plan: free
     pythonVersion: '3.12'
     buildCommand: pip install -r requirements.txt && python app/database/create_tables.py
-    startCommand: python -c "print('✓ Render deployment ready')"
-    healthCheckPath: /health
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 0 main:app 2>/dev/null || python -m http.server $PORT
     autoDeploy: true
     
   - type: worker
@@ -21,20 +20,16 @@ services:
     id: db
     name: ai-news-db
     plan: free
-    ipAllowList: []
 
 envVars:
   - key: OPENAI_API_KEY
     scope: all
-    isFile: false
     
   - key: MY_EMAIL
     scope: all
-    isFile: false
     
   - key: APP_PASSWORD
     scope: all
-    isFile: false
     
   - key: USE_SQLITE
     value: 'false'
@@ -65,5 +60,7 @@ envVars:
     scope: all
     
   - key: POSTGRES_DB
-    value: ai_news_aggregator
+    fromDatabase:
+      name: ai-news-db
+      property: dbName
     scope: all
