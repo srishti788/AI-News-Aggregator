@@ -6,9 +6,6 @@ services:
     buildCommand: pip install -r requirements.txt && python app/database/create_tables.py
     startCommand: python main.py
     autoDeploy: true
-    envVars:
-      - key: USE_SQLITE
-        value: 'false'
     
   - type: worker
     name: ai-news-worker
@@ -16,9 +13,6 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
-    envVars:
-      - key: USE_SQLITE
-        value: 'false'
     
   - type: pserv
     name: ai-news-db
@@ -28,13 +22,3 @@ databases:
   - name: ai-news-db
     databaseName: ai_news_aggregator
     plan: free
-
-envVars:
-  - key: OPENAI_API_KEY
-    scope: all
-    
-  - key: MY_EMAIL
-    scope: all
-    
-  - key: APP_PASSWORD
-    scope: all
