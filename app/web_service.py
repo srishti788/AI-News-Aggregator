@@ -31,35 +31,28 @@ pipeline_state = {
     "last_success": False,
     "running": False,
     "error": None,
-    "run_count": 0
+    "run_count": 0,
+    "db_initialized": False
 }
 
 
-def wait_for_database(max_retries: int = 30, delay: int = 2) -> bool:
-    """Wait for database to be ready"""
-    logger.info("⏳ Waiting for database to be ready...")
+def ensure_database_initialized():
+    """Lazy initialization of database on first request"""
+    if pipeline_state["db_initialized"]:
+        return True
     
     try:
+        from app.database.models import Base
         from app.database.connection import engine
         
-        for attempt in range(max_retries):
-            try:
-                with engine.connect() as connection:
-                    logger.info(f"✓ Database connection successful")
-                    return True
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    logger.warning(f"⚠️  Database not ready (attempt {attempt + 1}/{max_retries}), "
-                                   f"retrying in {delay}s...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"✗ Database connection failed: {e}")
-                    return False
+        logger.info("📊 Initializing database tables...")
+        Base.metadata.create_all(engine)
+        pipeline_state["db_initialized"] = True
+        logger.info("✓ Database initialized")
+        return True
     except Exception as e:
-        logger.error(f"✗ Failed to import database module: {e}")
+        logger.error(f"✗ Database init failed: {e}")
         return False
-    
-    return False
 
 
 def run_pipeline_safe():
@@ -95,51 +88,50 @@ def run_pipeline_safe():
         pipeline_state["running"] = False
 
 
-def pipeline_scheduler(interval_minutes: int = 60):
-    """Run pipeline on a schedule in background thread"""
-    logger.info(f"🕐 Pipeline scheduler started (every {interval_minutes} minutes)")
+def pipeline_scheduler(initial_delay: int = 120, interval_minutes: int = 60):
+    """Run pipeline on schedule - waits for Flask server to start first"""
+    logger.info(f"⏱️  Pipeline scheduler: waiting {initial_delay}s before first run")
+    time.sleep(initial_delay)
     
-    # Run pipeline immediately on startup
-    logger.info("🚀 Running initial pipeline...")
-    run_pipeline_safe()
-    
-    # Then schedule for future runs
     while True:
-        logger.info(f"⏱️  Next pipeline run in {interval_minutes} minutes...")
+        try:
+            run_pipeline_safe()
+        except Exception as e:
+            logger.error(f"✗ Scheduler error: {e}")
+        
         time.sleep(interval_minutes * 60)
-        run_pipeline_safe()
 
 
 # Flask Routes
 @app.route('/')
 def health_check():
     """Health check endpoint"""
+    ensure_database_initialized()
     return jsonify({
         "status": "running",
         "app": "AI News Aggregator",
-        "message": "Service is healthy and ready",
-        "version": "1.0.0"
+        "message": "Service is healthy and ready"
     }), 200
 
 
 @app.route('/health')
 def health():
-    """Quick health check"""
+    """Quick health check - no database call"""
     return jsonify({"healthy": True}), 200
 
 
 @app.route('/status')
 def status():
     """Pipeline status endpoint"""
+    ensure_database_initialized()
     return jsonify({
         "service": "running",
-        "database": "connected",
         "pipeline": {
             "last_run": pipeline_state["last_run"],
             "last_success": pipeline_state["last_success"],
-            "currently_running": pipeline_state["running"],
+            "running": pipeline_state["running"],
             "total_runs": pipeline_state["run_count"],
-            "last_error": pipeline_state["error"]
+            "error": pipeline_state["error"]
         }
     }), 200
 
@@ -169,20 +161,19 @@ def main():
     
     logger.info("✓ All required environment variables are set")
     
-    # Wait for database
-    if not wait_for_database():
-        logger.error("✗ Could not connect to database")
-        sys.exit(1)
-    
-    # Start pipeline scheduler in background thread
-    scheduler_thread = threading.Thread(target=pipeline_scheduler, args=(60,), daemon=True)
+    # Start pipeline scheduler in background thread with 2-minute initial delay
+    scheduler_thread = threading.Thread(
+        target=pipeline_scheduler, 
+        args=(120, 60),
+        daemon=True
+    )
     scheduler_thread.start()
-    logger.info("✓ Pipeline scheduler thread started")
+    logger.info("✓ Pipeline scheduler started (first run in 2 minutes)")
     
-    # Start Flask web server
+    # Start Flask web server IMMEDIATELY (don't wait for anything)
     port = int(os.environ.get('PORT', 10000))
     logger.info(f"🚀 Starting Flask web server on port {port}")
-    logger.info("ℹ️  Pipeline runs automatically in the background every 60 minutes")
+    logger.info("ℹ️  Pipeline will run in 2 minutes, then every 60 minutes")
     
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
