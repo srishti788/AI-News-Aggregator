@@ -17,7 +17,7 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     
-  - type: postgres
+  - type: pserv
     id: db
     name: ai-news-db
     plan: free
