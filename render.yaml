@@ -6,13 +6,6 @@ services:
     buildCommand: pip install -r requirements.txt && python app/database/create_tables.py
     startCommand: python main.py
     autoDeploy: true
-    
-  - type: worker
-    name: ai-news-worker
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python main.py
   
 databases:
   - name: ai-news-db
