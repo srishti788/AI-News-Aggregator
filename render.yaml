@@ -3,22 +3,30 @@ services:
     name: ai-news-aggregator
     env: python
     plan: free
-    pythonVersion: '3.12'
     buildCommand: pip install -r requirements.txt && python app/database/create_tables.py
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 0 main:app 2>/dev/null || python -m http.server $PORT
+    startCommand: python main.py
     autoDeploy: true
+    envVars:
+      - key: USE_SQLITE
+        value: 'false'
     
   - type: worker
     name: ai-news-worker
     env: python
     plan: free
-    pythonVersion: '3.12'
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
+    envVars:
+      - key: USE_SQLITE
+        value: 'false'
     
   - type: pserv
-    id: db
     name: ai-news-db
+    plan: free
+  
+databases:
+  - name: ai-news-db
+    databaseName: ai_news_aggregator
     plan: free
 
 envVars:
@@ -29,38 +37,4 @@ envVars:
     scope: all
     
   - key: APP_PASSWORD
-    scope: all
-    
-  - key: USE_SQLITE
-    value: 'false'
-    scope: all
-    
-  - key: POSTGRES_HOST
-    fromDatabase:
-      name: ai-news-db
-      property: host
-    scope: all
-    
-  - key: POSTGRES_PORT
-    fromDatabase:
-      name: ai-news-db
-      property: port
-    scope: all
-    
-  - key: POSTGRES_USER
-    fromDatabase:
-      name: ai-news-db
-      property: user
-    scope: all
-    
-  - key: POSTGRES_PASSWORD
-    fromDatabase:
-      name: ai-news-db
-      property: password
-    scope: all
-    
-  - key: POSTGRES_DB
-    fromDatabase:
-      name: ai-news-db
-      property: dbName
     scope: all
