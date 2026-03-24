@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: ai-news-aggregator
+    env: python
+    plan: free
+    pythonVersion: '3.12'
+    buildCommand: pip install -r requirements.txt && python app/database/create_tables.py
+    startCommand: python -c "print('✓ Render deployment ready')"
+    healthCheckPath: /health
+    autoDeploy: true
+    
+  - type: background_worker
+    name: ai-news-worker
+    env: python
+    plan: free
+    pythonVersion: '3.12'
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    
+  - type: pserver
+    id: db
+    name: ai-news-db
+    plan: free
+    ipAllowList: []
+
+envVars:
+  - key: OPENAI_API_KEY
+    scope: all
+    isFile: false
+    
+  - key: MY_EMAIL
+    scope: all
+    isFile: false
+    
+  - key: APP_PASSWORD
+    scope: all
+    isFile: false
+    
+  - key: USE_SQLITE
+    value: 'false'
+    scope: all
+    
+  - key: POSTGRES_HOST
+    fromDatabase:
+      name: ai-news-db
+      property: host
+    scope: all
+    
+  - key: POSTGRES_PORT
+    fromDatabase:
+      name: ai-news-db
+      property: port
+    scope: all
+    
+  - key: POSTGRES_USER
+    fromDatabase:
+      name: ai-news-db
+      property: user
+    scope: all
+    
+  - key: POSTGRES_PASSWORD
+    fromDatabase:
+      name: ai-news-db
+      property: password
+    scope: all
+    
+  - key: POSTGRES_DB
+    value: ai_news_aggregator
+    scope: all
